@@ -1,0 +1,509 @@
+{
+  "name": "Midblooma Weekly Content Chain",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000001",
+      "name": "Monday 08:00 Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [120, 400]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "={{ $vars.TREND_LOG_SHEET_ID }}",
+          "__rl": true,
+          "mode": "id"
+        },
+        "sheetName": {
+          "value": "Trend Log",
+          "__rl": true,
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {
+          "returnAllMatches": true
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000002",
+      "name": "Read 7-Day Trend Signals",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [340, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cz1Yn9DYkoqHaQfb",
+          "name": "Google Sheets (Midblooma)"
+        }
+      },
+      "notes": "Reads the Trend Log tab. Filter to last 7 days in the Code node below."
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "={{ $vars.TREND_LOG_SHEET_ID }}",
+          "__rl": true,
+          "mode": "id"
+        },
+        "sheetName": {
+          "value": "Content Log",
+          "__rl": true,
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000003",
+      "name": "Read Content Log (Past 4 Weeks)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [340, 500],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cz1Yn9DYkoqHaQfb",
+          "name": "Google Sheets (Midblooma)"
+        }
+      },
+      "notes": "Content Log tab: column 'topic' with one row per published article."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the trend_envelopes array and content_log from Google Sheets rows\nconst trendRows = $('Read 7-Day Trend Signals').all().map(i => i.json);\nconst contentRows = $('Read Content Log (Past 4 Weeks)').all().map(i => i.json);\n\n// Filter trend rows to the last 7 days\nconst sevenDaysAgo = new Date();\nsevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);\n\n// Group rows into per-day envelopes (one envelope per unique run_id)\nconst envelopeMap = {};\nfor (const row of trendRows) {\n  if (!row.run_id) continue;\n  const rowDate = new Date(row.date);\n  if (rowDate < sevenDaysAgo) continue;\n  if (!envelopeMap[row.run_id]) {\n    envelopeMap[row.run_id] = {\n      agent_id: 'trend_scout',\n      timestamp: row.date + 'T06:00:00Z',\n      run_id: row.run_id,\n      cadence: 'daily',\n      status: 'ok',\n      payload: { signals: [], date: row.date },\n      notes: ''\n    };\n  }\n  envelopeMap[row.run_id].payload.signals.push({\n    rank: parseInt(row.rank) || 1,\n    source: row.source || '',\n    title: row.title || '',\n    url: row.url || '',\n    engagement_score: parseInt(row.engagement_score) || 0,\n    pain_point: row.pain_point || '',\n    content_angle: row.content_angle || ''\n  });\n}\n\nconst trendEnvelopes = Object.values(envelopeMap);\nconst contentLog = contentRows.map(r => r.topic).filter(Boolean);\n\n// Generate a run_id for this weekly run\nconst runId = 'weekly-' + new Date().toISOString().slice(0,10);\n\nreturn [{ json: { trend_envelopes: trendEnvelopes, content_log: contentLog, run_id: runId } }];"
+      },
+      "id": "w1a00001-0000-0000-0000-000000000004",
+      "name": "Build Strategist Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/content-strategist",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ trend_envelopes: $json.trend_envelopes, content_log: $json.content_log, run_id: $json.run_id }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000005",
+      "name": "Content Strategist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [820, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "blocked",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000006",
+      "name": "Strategist Status OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1060, 400],
+      "notes": "True (top) = ok or needs_review → proceed to Writer. False (bottom) = blocked → alert Nufar."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NUFAR_EMAIL }}",
+        "subject": "=⚠️ Content Strategist needs review — {{ new Date().toLocaleDateString('en-GB') }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; padding: 20px;\">\n<h2>Content Strategist: Needs Review</h2>\n<p>The Content Strategist flagged this week's topic for your review before proceeding.</p>\n<p><strong>Status:</strong> {{ $json.status }}</p>\n<p><strong>Notes:</strong> {{ $json.notes }}</p>\n<p><strong>Topic selected:</strong> {{ $json.payload.topic }}</p>\n<p><strong>Studies found:</strong> {{ $json.payload.supporting_studies ? $json.payload.supporting_studies.length : 0 }}</p>\n<p>Log into n8n to approve or reject before the Writer runs.</p>\n</body></html>",
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000007",
+      "name": "Alert: Strategist Needs Review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1060, 620],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "PBi7bjcCld5sRLbs",
+          "name": "Gmail (Midblooma)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/writer",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ strategist_envelope: $json }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000008",
+      "name": "Writer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/health-qa",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ writer_envelope: $json }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000009",
+      "name": "Health QA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-qa-status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000010",
+      "name": "QA Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "notes": "True (top) = QA passed → run campaign + newsletter. False (bottom) = QA blocked → alert Nufar with issue list."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NUFAR_EMAIL }}",
+        "subject": "=🚫 Health QA BLOCKED — content returned to Writer",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; padding: 20px;\">\n<h2 style=\"color: #c0392b;\">Health QA: Content Blocked</h2>\n<p>The Health QA agent blocked this week's content. It has NOT been published.</p>\n<p><strong>Issues found ({{ $json.payload.issues.length }}):</strong></p>\n<table style=\"width:100%; border-collapse: collapse;\">\n  <tr style=\"background:#f5f5f5;\"><th style=\"padding:8px;text-align:left;\">Check</th><th style=\"padding:8px;text-align:left;\">Location</th><th style=\"padding:8px;text-align:left;\">Flagged Text</th><th style=\"padding:8px;text-align:left;\">Fix</th></tr>\n  {{ $json.payload.issues.map(i => '<tr><td style=\"padding:8px;border-bottom:1px solid #eee;\">' + i.check + '</td><td style=\"padding:8px;border-bottom:1px solid #eee;\">' + i.location + '</td><td style=\"padding:8px;border-bottom:1px solid #eee;font-style:italic;\">' + i.flagged_text + '</td><td style=\"padding:8px;border-bottom:1px solid #eee;\">' + i.fix_instruction + '</td></tr>').join('') }}\n</table>\n<p style=\"margin-top:20px;\">The Writer agent needs to fix these issues and resubmit.</p>\n<p><strong>Run ID:</strong> {{ $json.run_id }}</p>\n</body></html>",
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000011",
+      "name": "Alert: QA Blocked",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1780, 500],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "PBi7bjcCld5sRLbs",
+          "name": "Gmail (Midblooma)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/social-campaign-manager",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ qa_envelope: $json }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000012",
+      "name": "Social Campaign Manager",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/newsletter-editor",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ qa_envelope: $json }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000013",
+      "name": "Newsletter Editor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/campaign-executor",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ campaign_envelope: $json, dry_run: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "w1a00001-0000-0000-0000-000000000014",
+      "name": "Campaign Executor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2260, 160]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "={{ $vars.TREND_LOG_SHEET_ID }}",
+          "__rl": true,
+          "mode": "id"
+        },
+        "sheetName": {
+          "value": "Execution Log",
+          "__rl": true,
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_id": "={{ $json.run_id }}",
+            "week_of": "={{ new Date().toISOString().split('T')[0] }}",
+            "executed_count": "={{ $json.payload.executed.length }}",
+            "skipped_count": "={{ $json.payload.skipped.length }}",
+            "summary": "={{ $json.payload.execution_summary }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000015",
+      "name": "Log Execution to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2500, 160],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cz1Yn9DYkoqHaQfb",
+          "name": "Google Sheets (Midblooma)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "={{ $vars.TREND_LOG_SHEET_ID }}",
+          "__rl": true,
+          "mode": "id"
+        },
+        "sheetName": {
+          "value": "Content Log",
+          "__rl": true,
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ new Date().toISOString().split('T')[0] }}",
+            "run_id": "={{ $('Content Strategist').first().json.run_id }}",
+            "topic": "={{ $('Content Strategist').first().json.payload.topic }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000016",
+      "name": "Log Topic to Content Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2500, 320],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cz1Yn9DYkoqHaQfb",
+          "name": "Google Sheets (Midblooma)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NUFAR_EMAIL }}",
+        "subject": "=📬 Newsletter ready for your approval — {{ new Date().toLocaleDateString('en-GB') }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n<h2>Weekly newsletter draft is ready</h2>\n<p>The AI team has produced this week's newsletter. Please review and approve before it sends.</p>\n\n<h3>Subject line options:</h3>\n<ol>\n  {{ $('Newsletter Editor').first().json.payload.subject_options.map(s => '<li>' + s + '</li>').join('') }}\n</ol>\n\n<p><strong>Estimated read time:</strong> {{ $('Newsletter Editor').first().json.payload.estimated_read_time }}</p>\n<p><strong>Word count:</strong> {{ $('Newsletter Editor').first().json.payload.word_count }}</p>\n\n<hr style=\"border:1px solid #eee; margin: 20px 0;\" />\n<h3>Campaign execution summary</h3>\n<p>{{ $('Campaign Executor').first().json.payload.execution_summary }}</p>\n<p>Posts executed: {{ $('Campaign Executor').first().json.payload.executed.length }} | Skipped: {{ $('Campaign Executor').first().json.payload.skipped.length }}</p>\n\n<hr style=\"border:1px solid #eee; margin: 20px 0;\" />\n<p style=\"color: #e74c3c; font-weight: bold;\">⚠️ The newsletter has NOT been sent. You must approve it first.</p>\n<p><strong>Run ID:</strong> {{ $('Content Strategist').first().json.run_id }}</p>\n</body></html>",
+        "options": {}
+      },
+      "id": "w1a00001-0000-0000-0000-000000000017",
+      "name": "Send Weekly Summary to Nufar",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2740, 240],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "PBi7bjcCld5sRLbs",
+          "name": "Gmail (Midblooma)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Monday 08:00 Trigger": {
+      "main": [
+        [
+          { "node": "Read 7-Day Trend Signals", "type": "main", "index": 0 },
+          { "node": "Read Content Log (Past 4 Weeks)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read 7-Day Trend Signals": {
+      "main": [
+        [{ "node": "Build Strategist Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Content Log (Past 4 Weeks)": {
+      "main": [
+        [{ "node": "Build Strategist Input", "type": "main", "index": 1 }]
+      ]
+    },
+    "Build Strategist Input": {
+      "main": [
+        [{ "node": "Content Strategist", "type": "main", "index": 0 }]
+      ]
+    },
+    "Content Strategist": {
+      "main": [
+        [{ "node": "Strategist Status OK?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Strategist Status OK?": {
+      "main": [
+        [{ "node": "Writer", "type": "main", "index": 0 }],
+        [{ "node": "Alert: Strategist Needs Review", "type": "main", "index": 0 }]
+      ]
+    },
+    "Writer": {
+      "main": [
+        [{ "node": "Health QA", "type": "main", "index": 0 }]
+      ]
+    },
+    "Health QA": {
+      "main": [
+        [{ "node": "QA Passed?", "type": "main", "index": 0 }]
+      ]
+    },
+    "QA Passed?": {
+      "main": [
+        [
+          { "node": "Social Campaign Manager", "type": "main", "index": 0 },
+          { "node": "Newsletter Editor", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Alert: QA Blocked", "type": "main", "index": 0 }]
+      ]
+    },
+    "Social Campaign Manager": {
+      "main": [
+        [{ "node": "Campaign Executor", "type": "main", "index": 0 }]
+      ]
+    },
+    "Campaign Executor": {
+      "main": [
+        [
+          { "node": "Log Execution to Sheet", "type": "main", "index": 0 },
+          { "node": "Log Topic to Content Log", "type": "main", "index": 0 },
+          { "node": "Send Weekly Summary to Nufar", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Newsletter Editor": {
+      "main": [
+        [{ "node": "Send Weekly Summary to Nufar", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/London"
+  },
+  "tags": [{ "name": "midblooma" }, { "name": "weekly" }]
+}

@@ -1,0 +1,254 @@
+"""
+Midblooma Agent HTTP Server
+Wraps all 8 agents as Flask HTTP endpoints so n8n can call them.
+
+Each endpoint:
+  - Accepts JSON body (the input envelope or parameters)
+  - Calls the corresponding agent run() function
+  - Returns the output envelope as JSON
+
+Start with:
+    pip install flask
+    python server.py
+
+Or with gunicorn (recommended for production):
+    gunicorn server:app --timeout 300 --workers 1 --bind 0.0.0.0:5000
+"""
+import os
+import traceback
+from flask import Flask, request, jsonify
+
+from agents import (
+    trend_scout,
+    performance_watcher,
+    content_strategist,
+    writer,
+    health_qa,
+    social_campaign_manager,
+    campaign_executor,
+    newsletter_editor,
+)
+
+app = Flask(__name__)
+
+
+def _err(message: str, status: int = 400):
+    return jsonify({"error": message}), status
+
+
+# ─────────────────────────────────────────────
+# AGENT 1 — Trend Scout
+# Body (all optional):
+#   { "run_id": "...", "cadence": "daily", "context_hint": "" }
+# ─────────────────────────────────────────────
+@app.route("/agents/trend-scout", methods=["POST"])
+def route_trend_scout():
+    body = request.get_json(silent=True) or {}
+    try:
+        result = trend_scout.run(
+            run_id=body.get("run_id"),
+            cadence=body.get("cadence", "daily"),
+            context_hint=body.get("context_hint", ""),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 2 — Performance Watcher
+# Body (required):
+#   {
+#     "today_metrics": { checker_uses, new_members, total_members,
+#                        social_reach, newsletter_open_rate },
+#     "seven_day_averages": { same keys },
+#     "run_id": "..."   (optional)
+#   }
+# ─────────────────────────────────────────────
+@app.route("/agents/performance-watcher", methods=["POST"])
+def route_performance_watcher():
+    body = request.get_json(silent=True) or {}
+    if "today_metrics" not in body:
+        return _err("today_metrics is required")
+    if "seven_day_averages" not in body:
+        return _err("seven_day_averages is required")
+    try:
+        result = performance_watcher.run(
+            today_metrics=body["today_metrics"],
+            seven_day_averages=body["seven_day_averages"],
+            run_id=body.get("run_id"),
+            cadence=body.get("cadence", "daily"),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 3 — Content Strategist
+# Body (required):
+#   {
+#     "trend_envelopes": [ ...7 Trend Scout envelopes... ],
+#     "content_log":     [ "topic A", "topic B", ... ],  (optional)
+#     "run_id":          "..."                            (optional)
+#   }
+# ─────────────────────────────────────────────
+@app.route("/agents/content-strategist", methods=["POST"])
+def route_content_strategist():
+    body = request.get_json(silent=True) or {}
+    if not body.get("trend_envelopes"):
+        return _err("trend_envelopes is required and must be non-empty")
+    try:
+        result = content_strategist.run(
+            trend_envelopes=body["trend_envelopes"],
+            content_log=body.get("content_log", []),
+            run_id=body.get("run_id"),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 4 — Writer
+# Body (required):
+#   { "strategist_envelope": { ...full envelope from Content Strategist... } }
+# ─────────────────────────────────────────────
+@app.route("/agents/writer", methods=["POST"])
+def route_writer():
+    body = request.get_json(silent=True) or {}
+    # Accept envelope directly OR wrapped in {"strategist_envelope": ...}
+    envelope = body.get("strategist_envelope") or (body if body.get("agent_id") else None)
+    if not envelope:
+        return _err("strategist_envelope is required")
+    try:
+        result = writer.run(
+            strategist_envelope=envelope,
+            qa_feedback=body.get("qa_feedback"),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 5 — Health QA
+# Body (required):
+#   { "writer_envelope": { ...full envelope from Writer... } }
+# ─────────────────────────────────────────────
+@app.route("/agents/health-qa", methods=["POST"])
+def route_health_qa():
+    body = request.get_json(silent=True) or {}
+    envelope = body.get("writer_envelope") or (body if body.get("agent_id") else None)
+    if not envelope:
+        return _err("writer_envelope is required")
+    try:
+        result = health_qa.run(writer_envelope=envelope)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 6 — Social Campaign Manager
+# Body (required):
+#   {
+#     "qa_envelope": { ...full envelope from Health QA... },
+#     "week_of":     "2026-03-17"   (optional — defaults to next Monday)
+#   }
+# ─────────────────────────────────────────────
+@app.route("/agents/social-campaign-manager", methods=["POST"])
+def route_social_campaign_manager():
+    body = request.get_json(silent=True) or {}
+    envelope = body.get("qa_envelope") or (body if body.get("agent_id") else None)
+    if not envelope:
+        return _err("qa_envelope is required")
+    try:
+        result = social_campaign_manager.run(
+            qa_envelope=envelope,
+            week_of=body.get("week_of"),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 7 — Campaign Executor
+# Body (required):
+#   {
+#     "campaign_envelope": { ...full envelope from Campaign Manager... },
+#     "dry_run":           false   (optional)
+#   }
+# ─────────────────────────────────────────────
+@app.route("/agents/campaign-executor", methods=["POST"])
+def route_campaign_executor():
+    body = request.get_json(silent=True) or {}
+    envelope = body.get("campaign_envelope") or (body if body.get("agent_id") else None)
+    if not envelope:
+        return _err("campaign_envelope is required")
+    try:
+        result = campaign_executor.run(
+            campaign_envelope=envelope,
+            dry_run=body.get("dry_run", False),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# AGENT 8 — Newsletter Editor
+# Body (required):
+#   {
+#     "qa_envelope":      { ...full envelope from Health QA... },
+#     "watcher_envelope": { ... }   (optional),
+#     "top_signal":       { ... }   (optional),
+#     "marketplace_data": [ ... ]   (optional),
+#     "events_data":      [ ... ]   (optional)
+#   }
+# ─────────────────────────────────────────────
+@app.route("/agents/newsletter-editor", methods=["POST"])
+def route_newsletter_editor():
+    body = request.get_json(silent=True) or {}
+    envelope = body.get("qa_envelope") or (body if body.get("agent_id") else None)
+    if not envelope:
+        return _err("qa_envelope is required")
+    try:
+        result = newsletter_editor.run(
+            qa_envelope=envelope,
+            watcher_envelope=body.get("watcher_envelope"),
+            top_signal=body.get("top_signal"),
+            marketplace_data=body.get("marketplace_data"),
+            events_data=body.get("events_data"),
+        )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ─────────────────────────────────────────────
+# Health check
+# ─────────────────────────────────────────────
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok", "agents": [
+        "trend-scout", "performance-watcher", "content-strategist",
+        "writer", "health-qa", "social-campaign-manager",
+        "campaign-executor", "newsletter-editor",
+    ]})
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Midblooma Agent Server starting on port {port}...")
+    print(f"Health check: http://localhost:{port}/health")
+    app.run(host="0.0.0.0", port=port, debug=False)

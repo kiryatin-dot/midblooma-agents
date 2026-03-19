@@ -1,0 +1,215 @@
+{
+  "name": "Midblooma Daily Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "d1a00001-0000-0000-0000-000000000001",
+      "name": "Daily 06:00 Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/trend-scout",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ run_id: $runId, cadence: 'daily' }) }}"
+      },
+      "id": "d1a00001-0000-0000-0000-000000000002",
+      "name": "Trend Scout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "={{ $vars.TREND_LOG_SHEET_ID }}",
+          "__rl": true,
+          "mode": "id"
+        },
+        "sheetName": {
+          "value": "Trend Log",
+          "__rl": true,
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $json.payload.date }}",
+            "run_id": "={{ $json.run_id }}",
+            "rank": "={{ $item.rank }}",
+            "source": "={{ $item.source }}",
+            "title": "={{ $item.title }}",
+            "url": "={{ $item.url }}",
+            "engagement_score": "={{ $item.engagement_score }}",
+            "pain_point": "={{ $item.pain_point }}",
+            "content_angle": "={{ $item.content_angle }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "d1a00001-0000-0000-0000-000000000003",
+      "name": "Log Signals to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [720, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cz1Yn9DYkoqHaQfb",
+          "name": "Google Sheets (Midblooma)"
+        }
+      },
+      "notes": "Splits on payload.signals array and writes one row per signal. Set TREND_LOG_SHEET_ID env var in n8n."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch yesterday's metrics from your platform API\n// Replace this with a real HTTP Request node to your analytics API\n// or a Google Sheets read if you log metrics there.\n\n// ── PLACEHOLDER — replace with actual metric fetch ──\nconst today = new Date().toISOString().split('T')[0];\n\nreturn [{\n  json: {\n    today_metrics: {\n      checker_uses: 0,\n      new_members: 0,\n      total_members: 0,\n      social_reach: 0,\n      newsletter_open_rate: 0.0\n    },\n    seven_day_averages: {\n      checker_uses: 0,\n      new_members: 0,\n      total_members: 0,\n      social_reach: 0,\n      newsletter_open_rate: 0.0\n    },\n    run_id: $('Daily 06:00 Trigger').first().json.runId\n  }\n}];"
+      },
+      "id": "d1a00001-0000-0000-0000-000000000004",
+      "name": "Fetch Platform Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 480],
+      "notes": "REPLACE: swap this Code node for an HTTP Request to your analytics API or a Google Sheets read node reading from your Metrics sheet."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://interproglottidal-unsuccessive-conception.ngrok-free.dev/agents/performance-watcher",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "ngrok-skip-browser-warning", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  today_metrics: $json.today_metrics,\n  seven_day_averages: $json.seven_day_averages,\n  run_id: $json.run_id,\n  cadence: 'daily'\n}) }}"
+      },
+      "id": "d1a00001-0000-0000-0000-000000000005",
+      "name": "Performance Watcher",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 480]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NUFAR_EMAIL }}",
+        "subject": "=Midblooma Daily Digest — {{ new Date().toLocaleDateString('en-GB') }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n<h2 style=\"color: #2d2d2d;\">Midblooma Daily Digest</h2>\n<p style=\"font-size: 16px; color: #444;\">{{ $json.payload.digest_summary }}</p>\n\n{{ $json.payload.anomalies.length > 0 ? '<h3 style=\"color: #c0392b;\">Anomalies Flagged</h3><ul>' + $json.payload.anomalies.map(a => '<li><strong>' + a.metric + '</strong>: ' + a.delta + ' (' + a.flag + ')</li>').join('') + '</ul>' : '<p style=\"color: #27ae60;\">✓ All metrics within normal range today.</p>' }}\n\n<hr style=\"border: 1px solid #eee; margin: 20px 0;\" />\n<h3>Metrics</h3>\n<table style=\"width: 100%; border-collapse: collapse;\">\n  <tr style=\"background: #f5f5f5;\"><th style=\"padding: 8px; text-align: left;\">Metric</th><th style=\"padding: 8px; text-align: right;\">Today</th></tr>\n  <tr><td style=\"padding: 8px;\">Ingredient Checker uses</td><td style=\"padding: 8px; text-align: right;\">{{ $json.payload.metrics.checker_uses }}</td></tr>\n  <tr style=\"background: #f9f9f9;\"><td style=\"padding: 8px;\">New members</td><td style=\"padding: 8px; text-align: right;\">{{ $json.payload.metrics.new_members }}</td></tr>\n  <tr><td style=\"padding: 8px;\">Total members</td><td style=\"padding: 8px; text-align: right;\">{{ $json.payload.metrics.total_members }}</td></tr>\n  <tr style=\"background: #f9f9f9;\"><td style=\"padding: 8px;\">Social reach</td><td style=\"padding: 8px; text-align: right;\">{{ $json.payload.metrics.social_reach }}</td></tr>\n  <tr><td style=\"padding: 8px;\">Newsletter open rate</td><td style=\"padding: 8px; text-align: right;\">{{ ($json.payload.metrics.newsletter_open_rate * 100).toFixed(1) }}%</td></tr>\n</table>\n\n<hr style=\"border: 1px solid #eee; margin: 20px 0;\" />\n<p style=\"font-size: 12px; color: #999;\">Midblooma AI Team · run_id: {{ $json.run_id }}</p>\n</body></html>",
+        "options": {}
+      },
+      "id": "d1a00001-0000-0000-0000-000000000006",
+      "name": "Send Daily Digest to Nufar",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1200, 480],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "PBi7bjcCld5sRLbs",
+          "name": "Gmail (Midblooma)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "={{ $vars.TREND_LOG_SHEET_ID }}",
+          "__rl": true,
+          "mode": "id"
+        },
+        "sheetName": {
+          "value": "Performance Log",
+          "__rl": true,
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $json.payload.date }}",
+            "run_id": "={{ $json.run_id }}",
+            "checker_uses": "={{ $json.payload.metrics.checker_uses }}",
+            "new_members": "={{ $json.payload.metrics.new_members }}",
+            "total_members": "={{ $json.payload.metrics.total_members }}",
+            "social_reach": "={{ $json.payload.metrics.social_reach }}",
+            "newsletter_open_rate": "={{ $json.payload.metrics.newsletter_open_rate }}",
+            "anomaly_count": "={{ $json.payload.anomalies.length }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "d1a00001-0000-0000-0000-000000000007",
+      "name": "Log Metrics to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [960, 640],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cz1Yn9DYkoqHaQfb",
+          "name": "Google Sheets (Midblooma)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 06:00 Trigger": {
+      "main": [
+        [
+          { "node": "Trend Scout", "type": "main", "index": 0 },
+          { "node": "Fetch Platform Metrics", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Trend Scout": {
+      "main": [
+        [
+          { "node": "Log Signals to Google Sheet", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Platform Metrics": {
+      "main": [
+        [
+          { "node": "Performance Watcher", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Performance Watcher": {
+      "main": [
+        [
+          { "node": "Send Daily Digest to Nufar", "type": "main", "index": 0 },
+          { "node": "Log Metrics to Google Sheet", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/London"
+  },
+  "tags": [{ "name": "midblooma" }, { "name": "daily" }]
+}
