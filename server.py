@@ -254,11 +254,17 @@ def health_check():
 def diagnostics():
     import socket
     import ssl
-    import os
+    import sys
     results = {}
+    # Python version
+    results["python_version"] = sys.version
     # Check API key
     results["api_key_set"] = bool(os.environ.get("ANTHROPIC_API_KEY"))
     results["api_key_prefix"] = os.environ.get("ANTHROPIC_API_KEY", "")[:20]
+    # Proxy env vars
+    results["http_proxy"] = os.environ.get("HTTP_PROXY", "")
+    results["https_proxy"] = os.environ.get("HTTPS_PROXY", "")
+    results["all_proxy"] = os.environ.get("ALL_PROXY", "")
     # DNS lookup
     try:
         ip = socket.gethostbyname("api.anthropic.com")
@@ -277,6 +283,29 @@ def diagnostics():
     except Exception as e:
         results["tcp_ok"] = False
         results["tcp_error"] = str(e)
+    # httpx direct GET to Anthropic
+    try:
+        import httpx
+        r = httpx.get("https://api.anthropic.com", timeout=10)
+        results["httpx_ok"] = True
+        results["httpx_status"] = r.status_code
+    except Exception as e:
+        results["httpx_ok"] = False
+        results["httpx_error"] = str(e)
+    # Minimal Anthropic SDK call (non-streaming, tiny)
+    try:
+        import anthropic as ant
+        client = ant.Anthropic()
+        msg = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Say OK"}],
+        )
+        results["sdk_ok"] = True
+        results["sdk_response"] = msg.content[0].text if msg.content else ""
+    except Exception as e:
+        results["sdk_ok"] = False
+        results["sdk_error"] = str(e)
     return jsonify(results)
 
 
