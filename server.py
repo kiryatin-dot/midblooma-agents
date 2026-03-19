@@ -292,10 +292,35 @@ def diagnostics():
     except Exception as e:
         results["httpx_ok"] = False
         results["httpx_error"] = str(e)
-    # Minimal Anthropic SDK call (non-streaming, tiny)
+    # httpx POST test (mimics what the SDK does)
+    try:
+        import httpx
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        r2 = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5",
+                "max_tokens": 10,
+                "messages": [{"role": "user", "content": "Say OK"}],
+            },
+            timeout=15,
+        )
+        results["httpx_post_ok"] = True
+        results["httpx_post_status"] = r2.status_code
+        results["httpx_post_body"] = r2.text[:200]
+    except Exception as e:
+        results["httpx_post_ok"] = False
+        results["httpx_post_error"] = str(e)
+    # Minimal Anthropic SDK call — forced HTTP/1.1, no HTTP/2
     try:
         import anthropic as ant
-        client = ant.Anthropic()
+        import httpx
+        client = ant.Anthropic(http_client=httpx.Client(http2=False))
         msg = client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=10,
