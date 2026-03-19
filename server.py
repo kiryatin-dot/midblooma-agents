@@ -247,6 +247,39 @@ def health_check():
     ]})
 
 
+# ─────────────────────────────────────────────
+# Network diagnostics
+# ─────────────────────────────────────────────
+@app.route("/diag", methods=["GET"])
+def diagnostics():
+    import socket
+    import ssl
+    import os
+    results = {}
+    # Check API key
+    results["api_key_set"] = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    results["api_key_prefix"] = os.environ.get("ANTHROPIC_API_KEY", "")[:20]
+    # DNS lookup
+    try:
+        ip = socket.gethostbyname("api.anthropic.com")
+        results["dns_ok"] = True
+        results["anthropic_ip"] = ip
+    except Exception as e:
+        results["dns_ok"] = False
+        results["dns_error"] = str(e)
+    # TCP connect
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection(("api.anthropic.com", 443), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname="api.anthropic.com") as ssock:
+                results["tcp_ok"] = True
+                results["tls_version"] = ssock.version()
+    except Exception as e:
+        results["tcp_ok"] = False
+        results["tcp_error"] = str(e)
+    return jsonify(results)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"Midblooma Agent Server starting on port {port}...")
