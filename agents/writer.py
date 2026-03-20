@@ -112,7 +112,12 @@ def run(
     )
 
     if qa_feedback:
-        issues = qa_feedback.get("payload", {}).get("issues", [])
+        # Handle both: full QA envelope {"payload": {"issues": [...]}}
+        # OR direct issues array [...] (as sent by n8n Writer Retry node)
+        if isinstance(qa_feedback, list):
+            issues = qa_feedback
+        else:
+            issues = qa_feedback.get("payload", {}).get("issues", [])
         user_message += (
             "\n\n⚠️ HEALTH QA REVISION REQUIRED — your previous draft was blocked.\n"
             "Fix ALL of the following issues before resubmitting:\n"
@@ -121,7 +126,7 @@ def run(
             check = issue.get("check", "")
             location = issue.get("location", "")
             flagged = issue.get("flagged_text", "")
-            fix = issue.get("fix", "")
+            fix = issue.get("fix_instruction", issue.get("fix", ""))
             user_message += f"\n{i}. [{check}] at {location}\n   Flagged: {flagged}\n   Fix: {fix}\n"
         user_message += "\nReturn only valid JSON with ALL issues resolved."
 
