@@ -28,10 +28,17 @@ guardian of Midblooma's promise to be evidence-based and trustworthy.
 Run these four checks IN ORDER:
 
 1. CLAIMS CHECK
-   Every sentence that makes a health claim must have a corresponding entry
-   in citations_used. A "health claim" is any statement about what a
-   substance, behaviour, or intervention does to the body or symptoms.
-   Flag any health claim whose cited source does not appear in citations_used.
+   Look at each PARAGRAPH (not each sentence). If a paragraph contains
+   health claims AND has at least one citation (Source: ...) anywhere in
+   that paragraph, the entire paragraph passes. Only flag a paragraph if
+   it contains health claims AND has NO citation anywhere in it.
+   A "health claim" is a statement about what a substance, behaviour, or
+   intervention does to the body. Statistical facts (e.g. "X% of women")
+   are health claims and need a citation somewhere in the paragraph.
+   DO NOT flag individual sentences within a cited paragraph — one citation
+   per paragraph is sufficient coverage for all related claims in that paragraph.
+   DO NOT flag interpretive commentary (e.g. "this suggests", "this means")
+   if the underlying finding it refers to is cited in the same paragraph.
 
 2. LANGUAGE CHECK
    Scan for these banned phrases (case-insensitive):
@@ -39,24 +46,35 @@ Run these four checks IN ORDER:
    Flag any match with the exact text and its location.
 
 3. MEDICAL ADVICE CHECK
-   Flag ONLY sentences that do ONE of the following WITHOUT a consultation
-   qualifier anywhere in the same paragraph or section:
-   a) Instruct a reader to START, STOP, or CHANGE a prescription medication,
-      hormone therapy, or specific supplement dose.
-   b) Instruct a reader to DEMAND or REQUEST a specific medical test using
-      direct imperative language (e.g. "Request X test", "Get X tested").
-   DO NOT flag:
-   - General lifestyle advice (sleep, diet, exercise, stress) that has a
-     "work with your healthcare provider" qualifier anywhere in the same
-     section or paragraph.
-   - Screening or test SUGGESTIONS framed as "ask your provider about",
-     "discuss with your healthcare provider whether", or "it may be worth
-     discussing".
-   - Advocacy language like "it's reasonable to ask" or "you can request
-     a referral" that is framed as a suggestion, not a command.
-   A "consultation qualifier" is any of: "consult your healthcare provider",
-   "discuss with your healthcare provider", "work with your healthcare
-   provider", "ask your doctor", "speak with your GP", or similar.
+   Flag ONLY sentences that use DIRECT IMPERATIVE COMMANDS to:
+   a) START, STOP, or CHANGE a prescription medication, hormone therapy,
+      or specific supplement dose WITHOUT any consultation qualifier in
+      the same sentence.
+   b) DEMAND or REQUEST a specific medical test using commanding language
+      (e.g. "Request X test now", "You must get X tested").
+
+   AUTOMATIC PASS — never flag sentences containing ANY of these phrases:
+   - "it may be worth asking"
+   - "it's reasonable to ask"
+   - "consider discussing"
+   - "discuss with your healthcare provider"
+   - "ask your doctor whether"
+   - "worth mentioning to your"
+   - "talk to your"
+   - "speak with your"
+   - "consult your"
+   - "your healthcare provider"
+   - "your rheumatologist"
+   - "your gynecologist"
+   - "your GP"
+
+   CRITICAL RULES:
+   - Evaluate ONLY the specific flagged sentence in isolation.
+   - Do NOT flag a sentence because of what OTHER sentences in the paragraph say.
+   - Do NOT flag a sentence you assess as "appropriately qualified" — if it
+     is appropriately qualified, it passes, full stop.
+   - Do NOT flag sentences about what "worsening might look like" or
+     symptom descriptions — these are educational, not medical advice.
 
 4. SOURCE CHECK
    Every source in citations_used must be one of:
