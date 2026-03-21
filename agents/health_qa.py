@@ -39,10 +39,24 @@ Run these four checks IN ORDER:
    Flag any match with the exact text and its location.
 
 3. MEDICAL ADVICE CHECK
-   Flag any sentence that instructs a reader to START, STOP, or CHANGE a
-   treatment, medication, supplement, or dose without a
-   "consult your healthcare provider" qualifier in the same sentence or
-   the immediately adjacent sentence.
+   Flag ONLY sentences that do ONE of the following WITHOUT a consultation
+   qualifier anywhere in the same paragraph or section:
+   a) Instruct a reader to START, STOP, or CHANGE a prescription medication,
+      hormone therapy, or specific supplement dose.
+   b) Instruct a reader to DEMAND or REQUEST a specific medical test using
+      direct imperative language (e.g. "Request X test", "Get X tested").
+   DO NOT flag:
+   - General lifestyle advice (sleep, diet, exercise, stress) that has a
+     "work with your healthcare provider" qualifier anywhere in the same
+     section or paragraph.
+   - Screening or test SUGGESTIONS framed as "ask your provider about",
+     "discuss with your healthcare provider whether", or "it may be worth
+     discussing".
+   - Advocacy language like "it's reasonable to ask" or "you can request
+     a referral" that is framed as a suggestion, not a command.
+   A "consultation qualifier" is any of: "consult your healthcare provider",
+   "discuss with your healthcare provider", "work with your healthcare
+   provider", "ask your doctor", "speak with your GP", or similar.
 
 4. SOURCE CHECK
    Every source in citations_used must be one of:
