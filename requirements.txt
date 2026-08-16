@@ -4,3 +4,8 @@ httpx>=0.27.0
 flask>=3.0.0
 gunicorn>=22.0.0
 pytest>=8.0.0
+requests>=2.31.0
+# Pinned (not >=) so the pip package matches the Chromium build baked into
+# the Dockerfile's mcr.microsoft.com/playwright/python:v1.48.0-jammy base —
+# demo_video_producer's screenshot capture. Bump both together.
+playwright==1.48.0

@@ -16,7 +16,7 @@ Or with gunicorn (recommended for production):
 """
 import os
 import traceback
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 
 from agents import (
     trend_scout,
@@ -27,9 +27,13 @@ from agents import (
     social_campaign_manager,
     campaign_executor,
     newsletter_editor,
+    demo_video_producer,
 )
 
 app = Flask(__name__)
+
+# Where rendered demo videos are written, keyed by run_id.
+DEMO_VIDEO_DIR = os.environ.get("DEMO_VIDEO_OUTPUT_DIR", "/tmp/demo_videos")
 
 
 def _err(message: str, status: int = 400):
@@ -236,6 +240,70 @@ def route_newsletter_editor():
 
 
 # ─────────────────────────────────────────────
+# AGENT 9 — Demo Video Producer
+# Body (required unless noted):
+#   {
+#     "url":                      "https://example.com",
+#     "company_name":             "Example Co",
+#     "company_info":             "One-line blurb about the company." (optional),
+#     "target_duration_seconds":  60   (optional, clamped to 30-90),
+#     "voice_id":                 "..." (optional, ElevenLabs voice ID override),
+#     "max_scenes":               6    (optional)
+#   }
+# On status "ok" the response includes "download_url" pointing at the
+# rendered MP4. Requires ANTHROPIC_API_KEY and ELEVENLABS_API_KEY, plus a
+# Chromium binary and ffmpeg/ffprobe on PATH — see DEMO_VIDEO_PRODUCER.md.
+# ─────────────────────────────────────────────
+@app.route("/agents/demo-video-producer", methods=["POST"])
+def route_demo_video_producer():
+    from agents.shared.envelope import new_run_id
+
+    body = request.get_json(silent=True) or {}
+    if not body.get("url"):
+        return _err("url is required")
+    if not body.get("company_name"):
+        return _err("company_name is required")
+
+    run_id = body.get("run_id") or new_run_id()
+    output_dir = os.path.join(DEMO_VIDEO_DIR, run_id)
+
+    try:
+        result = demo_video_producer.run(
+            url=body["url"],
+            company_name=body["company_name"],
+            company_info=body.get("company_info", ""),
+            run_id=run_id,
+            target_duration_seconds=body.get("target_duration_seconds", 60),
+            voice_id=body.get("voice_id"),
+            max_scenes=body.get("max_scenes", demo_video_producer.MAX_SCENES),
+            output_dir=output_dir,
+        )
+        if result.get("status") == "ok":
+            result["payload"]["download_url"] = (
+                f"/agents/demo-video-producer/download/{run_id}"
+            )
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+@app.route("/agents/demo-video-producer/download/<run_id>", methods=["GET"])
+def download_demo_video(run_id):
+    # run_id comes straight from the URL path; keep it to the UUID shape we
+    # generate so it can't be turned into a path-traversal payload.
+    if not all(c.isalnum() or c == "-" for c in run_id):
+        return _err("Invalid run_id", 400)
+    path = os.path.join(DEMO_VIDEO_DIR, run_id, "demo_video.mp4")
+    if not os.path.isfile(path):
+        return _err("No rendered video found for this run_id", 404)
+    return send_file(
+        path, mimetype="video/mp4", as_attachment=True,
+        download_name=f"demo_{run_id}.mp4",
+    )
+
+
+# ─────────────────────────────────────────────
 # Health check
 # ─────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
@@ -243,7 +311,7 @@ def health_check():
     return jsonify({"status": "ok", "agents": [
         "trend-scout", "performance-watcher", "content-strategist",
         "writer", "health-qa", "social-campaign-manager",
-        "campaign-executor", "newsletter-editor",
+        "campaign-executor", "newsletter-editor", "demo-video-producer",
     ]})
 
 
