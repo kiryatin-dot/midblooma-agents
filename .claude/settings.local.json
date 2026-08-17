@@ -38,7 +38,8 @@
       "Bash(cmd.exe /c \"py --version 2>nul\")",
       "Bash(cmd.exe /c \"python --version\")",
       "Bash(cmd.exe /c \"python3 --version\")",
-      "Bash(cmd.exe /c \"py -3 --version\")"
+      "Bash(cmd.exe /c \"py -3 --version\")",
+      "Bash(python3 *)"
     ]
   }
 }
